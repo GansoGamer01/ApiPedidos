@@ -1,6 +1,15 @@
+using ApiPedidos.BancoDeDados;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+
+var conexao = builder.Configuration.GetConnectionString("conexao");
+builder.Services.AddDbContext<PedidoContexto>(config =>
+{
+    config.UseSqlServer(conexao);
+});
 
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -9,12 +18,19 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// criação do banco \\
+using(var e = app.Services.CreateScope())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    var contexto = e.ServiceProvider.GetRequiredService<PedidoContexto>();
+    contexto.Database.Migrate();
 }
+
+    // Configure the HTTP request pipeline.
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI();
+    }
 
 app.UseHttpsRedirection();
 

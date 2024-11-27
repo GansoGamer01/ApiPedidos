@@ -23,20 +23,13 @@ namespace ApiPedidos.BancoDeDados
             modelBuilder.Entity<Pedido>()
                 .HasMany<PedidoItem>()
                 .WithOne(pi => pi.Pedido)
-                .HasForeignKey(pi => pi.idPedido);
+                .HasForeignKey(pi => pi.IdPedido);
 
             
             modelBuilder.Entity<PedidoItem>()
                 .HasOne<Pedido>()
-                .WithMany(pi => pi.PedidoItem)
-                .HasForeignKey(pi => pi.IdPedido)
-                .OnDelete(DeleteBehavior.NoAction);
-
-            
-            modelBuilder.Entity<Produto>()
-                .HasOne(ci => ci.PedidoCozinha)
-                .WithMany(ci => ci.PedidoCozinhaItems)
-                .HasForeignKey(pci => pci.PedidoCozinhaId)
+                .WithMany(p => p.PedidoItems)
+                .HasForeignKey(p => p.IdPedido)
                 .OnDelete(DeleteBehavior.NoAction);
 
             base.OnModelCreating(modelBuilder);

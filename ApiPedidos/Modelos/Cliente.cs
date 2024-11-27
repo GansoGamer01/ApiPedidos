@@ -16,6 +16,6 @@ namespace ApiPedidos.Modelos
         public string Cidade { get; set; }
         public string Estado { get; set; }
         public string Cep { get; set; }
-        public int DataCadastro { get; set; } // mudar para timestamp dps \\
+        public DateTime DataCadastro { get; set; }
     }
 }
