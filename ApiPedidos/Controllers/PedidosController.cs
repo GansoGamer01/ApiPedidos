@@ -1,8 +1,8 @@
 ﻿using ApiPedidos.BancoDeDados;
-using Microsoft.AspNetCore.Http;
+using ApiPedidos.DTOs;
+using ApiPedidos.Modelos;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace ApiPedidos.Controllers
 {
@@ -10,158 +10,78 @@ namespace ApiPedidos.Controllers
     [ApiController]
     public class PedidosController : ControllerBase
     {
-        // variavel do banco de dados
         private readonly PedidoContexto _context;
-        // o contrutor do controlador 
+
         public PedidosController(PedidoContexto contexto)
         {
             _context = contexto;
         }
 
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<PedidoGetDto>>> GetPedidos()
+        public async Task<IActionResult> GetPedidos()
         {
-            // SELECT c.NumeroMesa, c.NomeCliente FROM Comandas WHERE SituacaoComanda = 1 \\
-            var comandas =
-                await _context.Pedidos
-                .Where(p => p.Status == 1)
-                .Select(c => new PedidoGetDto
-                {
-                    Id = p.Id,
-                    NumeroMesa = p.NumeroMesa,
-                    NomeCliente = p.NomeCliente,
-                    ComandaItens = p.ComandaItems
-                    .Select(ci => new ComandaItensGetDto
-                    {
-                        Id = ci.Id,
-                        Titulo = ci.CardapioItem.Titulo,
-                    }
-                    ).ToList(),
+            var pedidos = await _context.Pedidos
+                .Include(p => p.Cliente)
+                .Include(p => p.PedidoItems)
+                .ThenInclude(pi => pi.Produto)
+                .ToListAsync();
 
-                }
-                ).ToListAsync();
-
-            // retorna o conteudo com uma lista de comandas \\
-            return Ok(comandas);
+            return Ok(pedidos);
         }
 
-        // GET: api/Comandas/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<ComandaGetDto>> GetComanda(int id)
+        public async Task<IActionResult> GetPedido(int id)
         {
-            // SELECT * FROM Comandas WHERE id = 1 \\
-            // SELECT * FROM ComandaItems WHERE ComandaId = 1 \\
-            var comanda = await _context.Comandas.FirstOrDefaultAsync(c => c.Id == id);
+            var pedido = await _context.Pedidos
+                .Include(p => p.Cliente)
+                .Include(p => p.PedidoItems)
+                .ThenInclude(pi => pi.Produto)
+                .FirstOrDefaultAsync(p => p.Id == id);
 
-            if (comanda == null)
+            if (pedido == null)
             {
-                return NotFound();
+                return NotFound("Pedido não encontrado.");
             }
 
-            var comandaDto = new ComandaGetDto()
-            {
-                NumeroMesa = comanda.NumeroMesa,
-                NomeCliente = comanda.NomeCliente,
-            };
+            var pedidoDTO = MapearPedidoParaDTO(pedido);
 
-            // SELECT id FROM ComandaItems WHERE ci.ComandaId = 1 \\
-            // INNER JOIN CardapioItems cli.id = ci.CardapioItemId \\
-            // busca os itens da comanda \\
-            var comandaItens =
-                    await _context.ComandaItems
-                        .Include(ci => ci.CardapioItem)
-                            .Where(ci => ci.ComandaId == id)
-                                .Select(ci => new ComandaItensGetDto
-                                {
-                                    Id = ci.Id,
-                                    Titulo = ci.CardapioItem.Titulo
-                                })
-                            .ToListAsync();
-
-            comandaDto.ComandaItens = comandaItens;
-            return comandaDto;
+            return Ok(pedidoDTO);
         }
 
-        // PUT: api/Comandas/5
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutComanda(int id, ComandaUpdateDto comanda)
+        public async Task<IActionResult> PutPedido(int id, Pedido pedidoAtualizado)
         {
-            if (id != comanda.Id)
+            var pedido = await _context.Pedidos
+                .Include(p => p.PedidoItems)
+                .FirstOrDefaultAsync(p => p.Id == id);
+
+            if (pedido == null)
             {
-                return BadRequest();
+                return NotFound("Pedido não encontrado.");
             }
 
-            // SELECT * FROM Comandas WHERE id = 2 \\
-            var ComandaUpdate = await _context.Comandas.FirstAsync(c => c.Id == id);
-
-            // verifica se foi informada uma nova mesa \\
-            if (comanda.NumeroMesa > 0)
+            if (id != pedido.Id)
             {
-                // verificar a disponibilidade da nova mesa \\
-                // SELECT * FROM mesas WHERE NumerMesa = 2 \\ 
-                var mesa = await _context.Mesas.FirstOrDefaultAsync(m => m.NumeroMesa == comanda.NumeroMesa);
-                if (mesa != null)
-                    return BadRequest("mesa invalida");
-
-                if (mesa.SituacaoMesa != 0)
-                    return BadRequest("mesa ocupada");
-
-                // alocar a nova mesa \\
-                mesa.SituacaoMesa = 1;
-
-                // desalocar a mesa atual \\
-                var mesaAtual = await _context.Mesas.FirstAsync(mesa => mesa.NumeroMesa == ComandaUpdate.NumeroMesa);
-                mesaAtual.SituacaoMesa = 0;
-
-                // atualiza o numero da mesa na comanda \\
-                ComandaUpdate.NumeroMesa = comanda.NumeroMesa;
+                return BadRequest("O ID do pedido não corresponde ao ID da URL.");
             }
 
+            // Atualizar campos do pedido
+            pedido.ClienteId = pedidoAtualizado.ClienteId;
+            pedido.Status = pedidoAtualizado.Status;
+            pedido.DataPedido = pedidoAtualizado.DataPedido;
+            pedido.Observacoes = pedidoAtualizado.Observacoes;
 
-            if (!string.IsNullOrEmpty(comanda.NomeCliente))
-                ComandaUpdate.NomeCliente = comanda.NomeCliente;
-
-            foreach (var item in comanda.ComandaItems)
+            // Atualizar itens do pedido
+            pedido.PedidoItems.Clear();
+            pedido.PedidoItems = pedidoAtualizado.PedidoItems.Select(item => new PedidoItem
             {
-                // incluir \\
-                if (item.incluir)
-                {
-                    var novoComandaItem = new ComandaItem()
-                    {
-                        Comanda = ComandaUpdate,
-                        CardapioItemId = item.cardapioItemId
-                    };
-                    await _context.ComandaItems.AddAsync(novoComandaItem);
+                ProdutoId = item.ProdutoId,
+                Quantidade = item.Quantidade,
+                PrecoUnitario = item.PrecoUnitario
+            }).ToList();
 
-
-
-                    // verificar se o cardapio possui preparo, se sim criar o pedido da cozinha \\
-                    var cardapioItem = await _context.cardapioItems.FindAsync(item.cardapioItemId);
-                    if (cardapioItem.PossuiPreparo)
-                    {
-                        var novoPedidoCozinha = new PedidoCozinha()
-                        {
-                            Comanda = ComandaUpdate,
-                            SituacaoId = 1
-                        };
-                        await _context.PedidoCozinhas.AddAsync(novoPedidoCozinha);
-                        var novoPedidoCozinhaItem = new PedidoCozinhaItem()
-                        {
-                            PedidoCozinha = novoPedidoCozinha,
-                            ComandaItem = novoComandaItem
-                        };
-                        await _context.PedidoCozinhaItems.AddAsync(novoPedidoCozinhaItem);
-                    };
-                }
-
-                // exluir \\
-                if (item.excluir)
-                {
-                    var comandaItemExcluir = await _context.ComandaItems.FirstAsync(f => f.Id == item.Id);
-                    _context.ComandaItems.Remove(comandaItemExcluir);
-                }
-            }
+            // Recalcular o valor total
+            pedido.ValorTotal = pedido.PedidoItems.Sum(item => item.Quantidade * item.PrecoUnitario);
 
             try
             {
@@ -169,86 +89,79 @@ namespace ApiPedidos.Controllers
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!ComandaExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
+                return StatusCode(StatusCodes.Status500InternalServerError, "Erro ao atualizar o pedido.");
             }
 
             return NoContent();
         }
 
-        // POST: api/Comandas
-        // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPost]
-        public async Task<ActionResult<Comanda>> PostComanda(ComandaDto comanda)
+        public async Task<IActionResult> PostPedido(PedidoDTO pedidoDTO)
         {
-            // verificar se a mesa está disponivel \\
-            // select * FROM MESAS where numeromesa = 2 \\
-            var mesa = _context.Mesas.First(m => m.NumeroMesa == comanda.NumeroMesa);
-            if (mesa is null)
-                return BadRequest("mesa não encontrada");
-            if (mesa.SituacaoMesa != 0)
+            if (pedidoDTO == null || pedidoDTO.idCliente <= 0)
             {
-                return BadRequest("está mesa está ocupada");
+                return BadRequest("Dados do pedido inválidos.");
             }
-            // altera a mesa para ocupada, para não permitir abrir outra comanda para a mesma mesa \\
-            mesa.SituacaoMesa = 1;
 
-            // criando nova comanda \\
-            var novaComanda = new Comanda()
+            // Verificar se o cliente existe
+            var cliente = await _context.Clientes.FindAsync(pedidoDTO.idCliente);
+            if (cliente == null)
             {
-                NumeroMesa = comanda.NumeroMesa,
-                NomeCliente = comanda.NomeCliente
-            };
+                return NotFound("Cliente não encontrado.");
+            }
 
-            // adicionando a comanda no banco \\
-            // INSERT INTO comandas (id, numeromesa) VALUES(1,2) \\
-            await _context.Comandas.AddAsync(novaComanda);
-
-            foreach (var item in comanda.CardapioItems)
+            // Verificar se todos os produtos existem
+            foreach (var item in pedidoDTO.PedidoItems)
             {
-                var novoItemComanda = new ComandaItem()
+                var produto = await _context.Produtos.FindAsync(item.IdProduto);
+                if (produto == null)
                 {
-                    Comanda = novaComanda,
-                    CardapioItemId = item
-                };
-
-                // adicionando o novo item na comanda \\
-                // INSERT INTO comandaitems (id, cardapioitemid)
-                await _context.ComandaItems.AddAsync(novoItemComanda);
-
-                // verificar se o cardapio possui preparo \\ 
-                // SELECT PossuiPreparo FROM CardapioItem WHERE Id = <item> \\
-                var cardapioItem = await _context.cardapioItems.FindAsync(item);
-                if (cardapioItem.PossuiPreparo)
-                {
-                    var novoPedidoCozinha = new PedidoCozinha()
-                    {
-                        Comanda = novaComanda,
-                        SituacaoId = 1 // PENDENTE
-                    };
-
-                    // INSERT INTO PedidoCozinha (id, comandaid, situaçãoid,  VALUES())
-                    await _context.PedidoCozinhas.AddAsync(novoPedidoCozinha);
-
-                    var novoPedidoCozinhaItem = new PedidoCozinhaItem()
-                    {
-                        PedidoCozinha = novoPedidoCozinha,
-                        ComandaItem = novoItemComanda
-                    };
-                    await _context.PedidoCozinhaItems.AddAsync(novoPedidoCozinhaItem);
+                    return NotFound($"Produto com ID {item.IdProduto} não encontrado.");
                 }
             }
 
-            // salvando a comanda \\
+            // Criar o pedido
+            var pedido = new Pedido
+            {
+                ClienteId = pedidoDTO.idCliente,
+                PedidoItems = pedidoDTO.PedidoItems.Select(item => new PedidoItem
+                {
+                    ProdutoId = item.IdProduto,
+                    Quantidade = item.Quantidade,
+                    PrecoUnitario = item.PrecoUnitario
+                }).ToList(),
+                Status = 1,
+                DataPedido = DateTime.Now,
+                Observacoes = pedidoDTO.Observacoes,
+                ValorTotal = pedidoDTO.PedidoItems.Sum(item => item.Quantidade * item.PrecoUnitario)
+            };
+
+            _context.Pedidos.Add(pedido);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetComanda", new { id = novaComanda.Id }, comanda);
+            return CreatedAtAction(nameof(GetPedido), new { id = pedido.Id }, pedido);
+        }
+
+        // Método auxiliar para mapear Pedido para PedidoDTO
+        private PedidoDTO MapearPedidoParaDTO(Pedido pedido)
+        {
+            return new PedidoDTO
+            {
+                Id = pedido.Id,
+                idCliente = pedido.ClienteId,
+                Nome = pedido.Cliente?.Nome,
+                PedidoItems = pedido.PedidoItems.Select(pi => new PedidoItemDTO
+                {
+                    IdProduto = pi.ProdutoId,
+                    Titulo = pi.Produto?.Titulo,
+                    Quantidade = pi.Quantidade,
+                    PrecoUnitario = pi.PrecoUnitario
+                }).ToList(),
+                Status = pedido.Status,
+                DataPedido = pedido.DataPedido,
+                ValorTotal = pedido.ValorTotal,
+                Observacoes = pedido.Observacoes
+            };
         }
     }
 }

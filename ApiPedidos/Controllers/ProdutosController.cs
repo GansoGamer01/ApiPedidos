@@ -1,6 +1,5 @@
 ﻿using ApiPedidos.BancoDeDados;
 using ApiPedidos.Modelos;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,7 +10,7 @@ namespace ApiPedidos.Controllers
     public class ProdutosController : ControllerBase
     {
         private readonly PedidoContexto _context;
-        
+
         public ProdutosController(PedidoContexto context)
         {
             _context = context;
@@ -19,14 +18,15 @@ namespace ApiPedidos.Controllers
 
         // GET: api/produtos
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Produto>>> GetProdutos()
+        public async Task<IActionResult> GetProdutos()
         {
-            return await _context.Produtos.ToListAsync();
+            var produtos = await _context.Produtos.ToListAsync();
+            return Ok(produtos);
         }
 
-        // GET: api/produtos/id
+        // GET: api/produtos/{id}
         [HttpGet("{id}")]
-        public async Task<ActionResult<Produto>> GetProdutos(int id)
+        public async Task<IActionResult> GetProdutoById(int id)
         {
             var produto = await _context.Produtos.FindAsync(id);
 
@@ -35,29 +35,43 @@ namespace ApiPedidos.Controllers
                 return NotFound();
             }
 
-            return produto;
+            return Ok(produto);
         }
 
-        // POST: api/Produtos
+        // POST: api/produtos
         [HttpPost]
-        public async Task<ActionResult<Produto>> PostCardapioItem(Produto produto)
+        public async Task<IActionResult> PostProduto(Produto produto)
         {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
             _context.Produtos.Add(produto);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetProdutos", new { id = produto.Id }, produto);
+            return CreatedAtAction(nameof(GetProdutoById), new { id = produto.Id }, produto);
         }
 
-        // PUT: api/CardapioItems/id
+        // PUT: api/produtos/{id}
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutProdutos(int id, Produto produto)
+        public async Task<IActionResult> PutProduto(int id, Produto produtoAtualizado)
         {
-            if (id != produto.Id)
+            if (id != produtoAtualizado.Id)
             {
-                return BadRequest();
+                return BadRequest("O ID do produto na URL não corresponde ao do corpo da requisição.");
             }
 
-            _context.Entry(produto).State = EntityState.Modified;
+            var produto = await _context.Produtos.FindAsync(id);
+            if (produto == null)
+            {
+                return NotFound();
+            }
+
+            produto.Titulo = produtoAtualizado.Titulo;
+            produto.Descricao = produtoAtualizado.Descricao;
+            produto.Preco = produtoAtualizado.Preco;
+            produto.Estoque = produtoAtualizado.Estoque;
 
             try
             {
@@ -65,7 +79,7 @@ namespace ApiPedidos.Controllers
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!CardapioItemExists(id))
+                if (!ProdutoExists(id))
                 {
                     return NotFound();
                 }
@@ -78,9 +92,10 @@ namespace ApiPedidos.Controllers
             return NoContent();
         }
 
-        private bool CardapioItemExists(int id)
+        // Método auxiliar para verificar a existência do produto
+        private bool ProdutoExists(int id)
         {
-            return _context.Produtos.Any(e => e.Id == id);
+            return _context.Produtos.Any(p => p.Id == id);
         }
     }
 }

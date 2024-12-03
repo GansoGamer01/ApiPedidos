@@ -1,38 +1,35 @@
-using ApiPedidos.BancoDeDados;
+﻿using ApiPedidos.BancoDeDados;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// Configuração do DbContext com SQLite
+builder.Services.AddDbContext<PedidoContexto>(options =>
+    options.UseSqlite("Data Source=loja_clientes.db"));
 
-var conexao = builder.Configuration.GetConnectionString("conexao");
-builder.Services.AddDbContext<PedidoContexto>(config =>
-{
-    config.UseSqlServer(conexao);
-});
-
-builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve;
+        options.JsonSerializerOptions.WriteIndented = true;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// cria��o do banco \\
-using(var e = app.Services.CreateScope())
+// Migrations automáticas (somente para fins educacionais)
+using (var scope = app.Services.CreateScope())
 {
-    var contexto = e.ServiceProvider.GetRequiredService<PedidoContexto>();
-    contexto.Database.Migrate();
+    var dbContext = scope.ServiceProvider.GetRequiredService<PedidoContexto>();
+    dbContext.Database.EnsureCreated();
 }
 
-    // Configure the HTTP request pipeline.
-    if (app.Environment.IsDevelopment())
-    {
-        app.UseSwagger();
-        app.UseSwaggerUI();
-    }
-
-app.UseHttpsRedirection();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 app.UseAuthorization();
 

@@ -8,10 +8,10 @@ namespace ApiPedidos.Modelos
         [Key]
         [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
         public int Id { get; set; }
-        public string Nome { get; set; }
+        public string Titulo { get; set; }
         public string Descricao { get; set; }
         public decimal Preco { get; set; }
         public int Estoque { get; set; }
-        public DateTime DataAdicionado { get; set; } 
+        public DateTime DataAdicionado { get; set; } = DateTime.Now;
     }
 }

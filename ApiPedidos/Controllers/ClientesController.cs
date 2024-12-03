@@ -1,8 +1,11 @@
-﻿using ApiPedidos.BancoDeDados;
-using ApiPedidos.Modelos;
-using Microsoft.AspNetCore.Http;
+﻿using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using ApiPedidos.BancoDeDados;
+using ApiPedidos.Modelos;
+using ApiPedidos.DTOs;
 
 namespace ApiPedidos.Controllers
 {
@@ -11,7 +14,7 @@ namespace ApiPedidos.Controllers
     public class ClientesController : ControllerBase
     {
         private readonly PedidoContexto _context;
-        
+
         public ClientesController(PedidoContexto context)
         {
             _context = context;
@@ -19,14 +22,28 @@ namespace ApiPedidos.Controllers
 
         // GET: api/Clientes
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Cliente>>> GetClientes()
+        public async Task<IActionResult> GetClientes()
         {
-            return await _context.Clientes.ToListAsync();
+            var clientes = _context.Clientes
+        .Select(c => new ClienteDto
+        {
+            Id = c.Id,
+            Nome = c.Nome,
+            Email = c.Email,
+            Telefone = c.Telefone,
+            Endereco = c.Endereco,
+            Cidade = c.Cidade,
+            Estado = c.Estado,
+            Cep = c.Cep,
+            DataCadastro = c.DataCadastro
+        })
+        .ToList();
+            return Ok(clientes);
         }
 
-        // GET: api/Clientes/id
+        // GET: api/Clientes/{id}
         [HttpGet("{id}")]
-        public async Task<ActionResult<Cliente>> GetUsuario(int id)
+        public async Task<IActionResult> GetClienteById(int id)
         {
             var cliente = await _context.Clientes.FindAsync(id);
 
@@ -35,52 +52,50 @@ namespace ApiPedidos.Controllers
                 return NotFound();
             }
 
-            return cliente;
+            return Ok(cliente);
         }
 
         // POST: api/Clientes
         [HttpPost]
-        public async Task<ActionResult<Cliente>> PostCliente(Cliente cliente)
+        public async Task<IActionResult> PostCliente(Cliente cliente)
         {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
             _context.Clientes.Add(cliente);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetCliente", new { id = cliente.Id }, cliente);
+            return CreatedAtAction(nameof(GetClienteById), new { id = cliente.Id }, cliente);
         }
 
-        // PUT: api/Clientes/id
+        // PUT: api/Clientes/{id}
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutCliente(int id, Cliente cliente)
+        public async Task<IActionResult> PutCliente(int id, Cliente clienteAtualizado)
         {
-            if (id != cliente.Id)
+            if (id != clienteAtualizado.Id)
             {
-                return BadRequest();
+                return BadRequest("O ID do cliente não corresponde ao parâmetro da URL.");
             }
 
-            _context.Entry(cliente).State = EntityState.Modified;
+            var cliente = await _context.Clientes.FindAsync(id);
+            if (cliente == null)
+            {
+                return NotFound();
+            }
 
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                if (!ClienteExists(id))
-                {
-                    return NotFound();
-                }
-                else
-                {
-                    throw;
-                }
-            }
+            cliente.Nome = clienteAtualizado.Nome;
+            cliente.Email = clienteAtualizado.Email;
+            cliente.Telefone = clienteAtualizado.Telefone;
+            cliente.Endereco = clienteAtualizado.Endereco;
+            cliente.Cidade = clienteAtualizado.Cidade;
+            cliente.Estado = clienteAtualizado.Estado;
+            cliente.Cep = clienteAtualizado.Cep;
+
+            await _context.SaveChangesAsync();
 
             return NoContent();
-        }
-
-        private bool ClienteExists(int id)
-        {
-            return _context.Clientes.Any(e => e.Id == id);
         }
     }
 }
